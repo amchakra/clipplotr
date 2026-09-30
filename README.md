@@ -1,5 +1,12 @@
 # _clipplotr_
 
+#### 
+
+Chakrabarti, A. M., Capitanchik, C., Ule, J., & Luscombe, N. M. (2023) [clipplotr - a comparative visualisation and analysis tool for CLIP data](https://doi.org/10.1261/rna.079326.122) 
+*RNA* 29 (6): 715-723
+
+doi: 10.1261/rna.079326.122
+
 ## Table of contents
 
 1. [About _clipplotr_](#about-clipplotr)
@@ -21,7 +28,7 @@ _clipplotr_ is a self-contained command-line tool written in R to facilitate com
 
 To install _clipplotr_, either clone the repository with
 ```
-git clone ulelab/clipplotr
+git clone https://github.com/ulelab/clipplotr.git
 ```
 for the latest version, or download from the [releases](https://github.com/ulelab/clipplotr/releases) page, which may be missing some of the latest features.
 
@@ -29,8 +36,9 @@ There are two options for installing the dependencies.
 
 ### 1. Conda option
 
-If you have Conda on your system you can create a virtual environment which installs R and all the dependencies using the provided YAML and running:
+If you have Conda on your system you can create a virtual environment which installs R and all the dependencies using the provided YAML. First move into the directory into which you clone _clipplotr_ and then run:
 ```
+cd clipplotr
 conda env create -f environment.yml
 ```
 
@@ -41,9 +49,10 @@ conda activate clipplotr
 
 ### 2. R option
 
-_clipplotr_ requires R to be installed on your system and uses some R (`optparse`, `BiocManager`, `ggplot2`, `ggthemes`, `cowplot`, `patchwork`, `smoother`, `zoo`, `data.table`) and Bioconductor packages (`rtracklayer`, `GenomicFeatures`). If you have R already installed, you can run the helper script to install the packages if needed:
+_clipplotr_ requires R to be installed on your system and uses some R (`optparse`, `BiocManager`, `ggplot2`, `ggthemes`, `cowplot`, `patchwork`, `smoother`, `zoo`, `data.table`) and Bioconductor packages (`rtracklayer`, `GenomicFeatures`). If you have R already installed, you can use the helper script to install the packages if needed. First move into the directory into which you clone _clipplotr_ and then run
 
 ````
+cd clipplotr
 Rscript install_libraries.R
 ````
 
@@ -166,6 +175,8 @@ Where multiple files are specified for a parameter, these should be comma-separa
 * `-o` or `--output` should be used to specify the output filename. The extension (e.g. `.pdf` or `.png`) will determine the output file type.
 
 * `--ratios` allows you to specify the relative sizing of the combined plots. Specify plot ratios in order: xlink track, auxiliary tracks, coverage track, annotation track (comma separated). Put 0 if any of these track types are absent. (default: 2 for xlinks, 0.25 for 1 auxiliary track 0.5 for >1, 2 for coverage, 3 for annotation)
+
+* `--no_ucsc` will skip checking the chromosome/sequence levels style in the provided files. If you use this option make sure they match up across all the BED, Bedgraph, Bigwig and GTF files.
 
 ## Example
 
