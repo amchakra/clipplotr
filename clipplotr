@@ -192,6 +192,7 @@ if(length(missing.files) > 0) Fail("These input files do not exist: ", paste(mis
 # Load libraries
 # ==========
 
+suppressPackageStartupMessages(library(GenomeInfoDb)) # seqlevelsStyle; no longer attached by GenomicRanges in newer Bioconductor
 suppressPackageStartupMessages(library(rtracklayer))
 suppressPackageStartupMessages(library(GenomicFeatures))
 suppressPackageStartupMessages(library(ggplot2))

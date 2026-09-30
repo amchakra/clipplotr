@@ -12,7 +12,7 @@ for(package in packages) {
 
 }
 
-biocpackages <- c("rtracklayer", "GenomicFeatures", "txdbmaker")
+biocpackages <- c("GenomeInfoDb", "rtracklayer", "GenomicFeatures", "txdbmaker")
 for(package in biocpackages) {
   
   if(!suppressPackageStartupMessages(require(package, character.only = TRUE, quietly = TRUE))) {

@@ -18,6 +18,7 @@ dependencies:
   - conda-forge::r-zoo
   - conda-forge::r-data.table
 
+  - bioconda::bioconductor-genomeinfodb
   - bioconda::bioconductor-rtracklayer
   - bioconda::bioconductor-genomicfeatures
   - bioconda::bioconductor-txdbmaker
