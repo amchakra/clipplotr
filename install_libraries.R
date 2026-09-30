@@ -1,7 +1,7 @@
 # Script to install necessary libraries for CLIPplotR
 # A. M. Chakrabarti
 
-packages <- c("optparse", "BiocManager", "ggplot2", "ggthemes", "cowplot", "smoother", "zoo", "data.table", "patchwork")
+packages <- c("optparse", "BiocManager", "ggplot2", "ggthemes", "cowplot", "zoo", "data.table", "patchwork")
 for(package in packages) {
 
     if(!suppressPackageStartupMessages(require(package, character.only = TRUE, quietly = TRUE))) {
@@ -12,7 +12,7 @@ for(package in packages) {
 
 }
 
-biocpackages <- c("rtracklayer", "GenomicFeatures", "ggbio")
+biocpackages <- c("GenomeInfoDb", "rtracklayer", "GenomicFeatures", "txdbmaker")
 for(package in biocpackages) {
   
   if(!suppressPackageStartupMessages(require(package, character.only = TRUE, quietly = TRUE))) {

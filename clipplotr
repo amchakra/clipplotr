@@ -3,7 +3,7 @@
 # Script to plot multiple CLIP tracks with gene structures
 # A. M. Chakrabarti
 # C. Capitanchik
-# Last updated: 8th June 2020
+# Last updated: 30th September 2026
 
 # ==========
 # Preamble
@@ -22,17 +22,18 @@ option_list <- list(make_option(c("-x", "--xlinks"), action = "store", type = "c
                     make_option(c("", "--coverage_colours"), action = "store", type = "character", help = "Colours for coverage data (comma separated in same order as files)"),
                     make_option(c("", "--coverage_groups"), action = "store", type = "character", help = "Grouping of coverage data (comma separated in same order as files)"),
                     make_option(c("-g", "--gtf"), action = "store", type = "character", help = "Reference GTF file (Gencode)"),
+                    make_option(c("", "--cache_dir"), action = "store", type = "character", help = "Directory for the cached annotation database [default: user cache directory]"),
                     make_option(c("", "--no_ucsc"), action = "store_true", type = "logical", help = "GTF has non-standard sequences", default = FALSE),
                     make_option(c("-r", "--region"), action = "store", type = "character", help = "Region of interest as chr3:35754106:35856276:+ or gene as ENSMUSG00000037400 or Atp11b"),
-                    make_option(c("", "--highlight"), action = "store", type = "character", help = "Region to highlight as 35754106:35856276"),                    
+                    make_option(c("", "--highlight"), action = "store", type = "character", help = "Region to highlight as 35754106:35856276"),
                     make_option(c("-n", "--normalisation"), action = "store", type = "character", help = "Normalisation options: none, maxpeak, libsize, custom, libsize_maxpeak, custom_maxpeak [default %default]", default = "libsize"),
                     make_option(c("", "--size_factors"), action = "store", type = "character", help = "Size factors for custom normalisation (comma separated)"),
                     make_option(c("", "--scale_y"), action = "store_true", type = "logical", help = "Scale CLIP y-axis for each group independently", default = FALSE),
                     make_option(c("", "--tidy_y_labels"), action = "store", type = "integer", help = "Keep this many y-axis labels (may be slightly more or fewer depending on data)"),
                     make_option(c("", "--flip_x"), action = "store_true", type = "logical", help = "Flip the x-axis for plotting e.g. genes on the negative strand", default = FALSE),
-                    make_option(c("-s", "--smoothing"), action = "store", type = "character", help = "Smoothing options: none, rollmean, gaussian [default %default]", default = "rollmean"),
+                    make_option(c("-s", "--smoothing"), action = "store", type = "character", help = "Smoothing options: none, rollmean [default %default]", default = "rollmean"),
                     make_option(c("-w", "--smoothing_window"), action = "store", type = "integer", help = "Smoothing window [default %default]", default = 100),
-                    make_option(c("-a", "--annotation"), action = "store", type = "character", help = "Annotation options: original, gene, transcript, none [default %default]", default = "transcript"),
+                    make_option(c("-a", "--annotation"), action = "store", type = "character", help = "Annotation options: gene, transcript, none [default %default]", default = "transcript"),
                     make_option(c("", "--size_x"), action = "store", type = "integer", help = "Plot size in mm (x) [default: %default]", default = 210),
                     make_option(c("", "--size_y"), action = "store", type = "integer", help = "Plot size in mm (y) [default: %default]", default = 297),
                     make_option(c("", "--ratios"), action = "store", type = "character", help = "Specify plot ratios in order: xlink track, auxiliary tracks, coverage track, annotation track \
@@ -46,39 +47,59 @@ opt_parser = OptionParser(option_list = option_list)
 opt <- parse_args(opt_parser)
 
 if(opt$verbose) print(opt)
-# if(opt$verbose) saveRDS(opt, "opt.rds")
+
+# ==========
+# Helpers for argument checking
+# ==========
+
+# Exit with a non-zero status so that pipelines register the failure
+Fail <- function(...) {
+
+  message("ERROR: ", ...)
+  quit(save = "no", status = 1)
+
+}
+
+SplitArg <- function(x) {
+
+  if(is.null(x)) return(NULL)
+  trimws(strsplit(x, ",")[[1]])
+
+}
+
+# Check that a per-file option has one entry per file
+CheckLength <- function(values, n, option, files_option) {
+
+  if(!is.null(values) && length(values) != n) {
+    Fail("--", option, " has ", length(values), " entries but --", files_option, " has ", n, " files")
+  }
+
+}
+
+CheckUnique <- function(values, option) {
+
+  if(anyDuplicated(values)) {
+    Fail("--", option, " must be unique, but these are duplicated: ", paste(unique(values[duplicated(values)]), collapse = ", "))
+  }
+
+}
+
+# Default track label: file name without directory or extension
+LabelFromFile <- function(files, extensions) {
+
+  sub(paste0("\\.(", extensions, ")(\\.gz)?$"), "", basename(files), ignore.case = TRUE)
+
+}
 
 # ==========
 # Checks for minimum parameters
 # ==========
 
-if(is.null(opt$xlinks)) {
-
-  message("ERROR: No iCLIP bedgraphs supplied")
-  quit(save = "no")
-
-}
-
-if(is.null(opt$gtf)) {
-
-  message("ERROR: No Reference GTF supplied")
-  quit(save = "no")
-
-}
-
-if(is.null(opt$region)) {
-
-  message("ERROR: region of interest needed to be supplied as e.g. chr3:35754106:35856276:+ or gene as ENSMUSG00000037400 or Atp11bd")
-  quit(save = "no")
-
-}
-
-if(is.null(opt$output)) {
-
-  message("ERROR: No output defined")
-  quit(save = "no")
-
-}
+if(is.null(opt$xlinks)) Fail("No iCLIP bedgraphs supplied")
+if(is.null(opt$gtf)) Fail("No Reference GTF supplied")
+if(is.null(opt$region)) Fail("region of interest needed to be supplied as e.g. chr3:35754106:35856276:+ or gene as ENSMUSG00000037400 or Atp11b")
+if(is.null(opt$output)) Fail("No output defined")
+if(!file.exists(opt$gtf)) Fail("GTF file '", opt$gtf, "' does not exist")
 
 if(file.exists(opt$output)) {
 
@@ -89,52 +110,95 @@ if(file.exists(opt$output)) {
 # Check switches
 
 if(!opt$normalisation %in% c("none", "maxpeak", "libsize", "custom", "custom_maxpeak", "libsize_maxpeak")) {
-  
-  message("ERROR: normalisation needs to be one of none, maxpeak, libsize, custom, libsize_maxpeak or custom_maxpeak")
-  quit(save = "no")
-  
+
+  Fail("normalisation needs to be one of none, maxpeak, libsize, custom, libsize_maxpeak or custom_maxpeak")
+
 }
 
-if(opt$normalisation == "custom" | opt$normalisation == "custom_maxpeak") {
-  
-  if(is.null(opt$size_factors)) {
-  
-  message("ERROR: for custom or custom_maxpeak normalisation size factors need to be provided")
-  quit(save = "no")
+if(opt$normalisation %in% c("custom", "custom_maxpeak") && is.null(opt$size_factors)) {
 
-  }
-  
+  Fail("for custom or custom_maxpeak normalisation size factors need to be provided")
+
 }
+
+if(opt$smoothing == "gaussian") Fail("gaussian smoothing has been removed; please use rollmean or none")
+
+if(!opt$smoothing %in% c("none", "rollmean")) Fail("smoothing needs to be one of none or rollmean")
+
+if(opt$smoothing_window < 1) Fail("--smoothing_window needs to be a positive integer")
+
+if(opt$annotation == "original") Fail("the original annotation style has been removed; please use transcript, gene or none")
+
+if(!opt$annotation %in% c("transcript", "gene", "none")) Fail("annotation needs to be one of transcript, gene or none")
 
 if(!is.null(opt$ratios)) {
-  rts = unlist(strsplit(opt$ratios, ","))
-  if(length(rts) != 4){
-    message("ERROR: --ratios, please provide 4 values in order: xlink track, auxiliary tracks, \
-    coverage track, annotation track (space separated). If a track is absent \
-    put 0.")
-    quit(save = "no")
+
+  rts <- suppressWarnings(as.numeric(SplitArg(opt$ratios)))
+  if(length(rts) != 4 || any(is.na(rts)) || any(rts < 0)) {
+    Fail("--ratios, please provide 4 values in order: xlink track, auxiliary tracks, coverage track, annotation track (comma separated). If a track is absent put 0.")
   }
 
 }
 
-if(!opt$smoothing %in% c("none", "rollmean", "gaussian")) {
-  
-  message("ERROR: smoothing needs to be one of none, rollmean, or gaussian")
-  quit(save = "no")
-  
+if(!is.null(opt$highlight)) {
+
+  highlight <- suppressWarnings(as.integer(strsplit(opt$highlight, ":")[[1]]))
+  if(length(highlight) != 2 || any(is.na(highlight))) Fail("--highlight needs to be given as start:end, e.g. 35754106:35856276")
+
 }
+
+# Per-file options: split and check they match the number of files
+xlink.files <- SplitArg(opt$xlinks)
+track_names <- SplitArg(opt$labels)
+xlink.cols <- SplitArg(opt$colours)
+xlink.groups <- SplitArg(opt$groups)
+size.factors <- SplitArg(opt$size_factors)
+
+CheckLength(track_names, length(xlink.files), "labels", "xlinks")
+CheckLength(xlink.cols, length(xlink.files), "colours", "xlinks")
+CheckLength(xlink.groups, length(xlink.files), "groups", "xlinks")
+if(opt$normalisation %in% c("custom", "custom_maxpeak")) {
+
+  CheckLength(size.factors, length(xlink.files), "size_factors", "xlinks")
+  size.factors <- suppressWarnings(as.numeric(size.factors))
+  if(any(is.na(size.factors)) || any(size.factors <= 0)) Fail("--size_factors need to be positive numbers")
+
+}
+
+if(is.null(track_names)) track_names <- make.unique(LabelFromFile(xlink.files, "bedgraph|bed"), sep = " ")
+CheckUnique(track_names, "labels")
+
+auxiliary.files <- SplitArg(opt$auxiliary)
+auxiliary.labels <- SplitArg(opt$auxiliary_labels)
+CheckLength(auxiliary.labels, length(auxiliary.files), "auxiliary_labels", "auxiliary")
+if(!is.null(auxiliary.files) && is.null(auxiliary.labels)) auxiliary.labels <- make.unique(LabelFromFile(auxiliary.files, "bed"), sep = " ")
+CheckUnique(auxiliary.labels, "auxiliary_labels")
+
+coverage.files <- SplitArg(opt$coverage)
+coverage.labels <- SplitArg(opt$coverage_labels)
+coverage.cols <- SplitArg(opt$coverage_colours)
+coverage.groups <- SplitArg(opt$coverage_groups)
+CheckLength(coverage.labels, length(coverage.files), "coverage_labels", "coverage")
+CheckLength(coverage.cols, length(coverage.files), "coverage_colours", "coverage")
+CheckLength(coverage.groups, length(coverage.files), "coverage_groups", "coverage")
+if(!is.null(coverage.files) && is.null(coverage.labels)) coverage.labels <- make.unique(LabelFromFile(coverage.files, "bw|bigwig"), sep = " ")
+CheckUnique(coverage.labels, "coverage_labels")
+
+missing.files <- c(xlink.files, auxiliary.files, coverage.files)
+missing.files <- missing.files[!file.exists(missing.files)]
+if(length(missing.files) > 0) Fail("These input files do not exist: ", paste(missing.files, collapse = ", "))
 
 # ==========
 # Load libraries
 # ==========
 
+suppressPackageStartupMessages(library(GenomeInfoDb)) # seqlevelsStyle; no longer attached by GenomicRanges in newer Bioconductor
 suppressPackageStartupMessages(library(rtracklayer))
 suppressPackageStartupMessages(library(GenomicFeatures))
 suppressPackageStartupMessages(library(ggplot2))
 suppressPackageStartupMessages(library(ggthemes))
 suppressPackageStartupMessages(library(cowplot))
 suppressPackageStartupMessages(library(patchwork))
-suppressPackageStartupMessages(library(smoother))
 suppressPackageStartupMessages(library(zoo))
 suppressPackageStartupMessages(library(data.table))
 
@@ -143,88 +207,167 @@ suppressPackageStartupMessages(library(data.table))
 # ==========
 
 ImportiMapsBedgraph <- function(bedgraph.file) {
-  
+
   bg <- import.bedGraph(bedgraph.file)
-  
+
   # Assign strand based on score
   strand(bg)[bg$score < 0] <- "-"
   strand(bg)[bg$score > 0] <- "+"
-  
+
   # Convert scores to positives now that strands assigned
   bg$score <- abs(bg$score)
-  
+
   if(!opt$no_ucsc) seqlevelsStyle(bg) <- "UCSC"
   return(bg)
-  
+
 }
 
 SubsetBedgraph <- function(gr, selected.region.gr) {
-  
+
   xlinks.gr <- unlist(tile(selected.region.gr, width = 1))
-  
+
   ol <- findOverlaps(xlinks.gr, gr)
   xlinks.gr$score <- 0
   xlinks.gr[queryHits(ol)]$score <- gr[subjectHits(ol)]$score
-  # xlinks.gr$score[is.na(xlinks.gr$score)] <- 0
-  
+
   return(xlinks.gr)
-  
+
+}
+
+# Find the name used for a chromosome in a file with a different naming style (e.g. chr1 vs 1)
+MatchSeqname <- function(chr, available) {
+
+  candidates <- unique(c(chr, sub("^chr", "", chr), paste0("chr", chr)))
+  if(chr %in% c("chrM", "M", "MT")) candidates <- c(candidates, "chrM", "MT")
+  hit <- candidates[candidates %in% available]
+  if(length(hit) == 0) return(NA_character_)
+  return(hit[1])
+
+}
+
+# Put the x-axis on the region of interest (reversed if flipped). coord_cartesian is used
+# rather than scale limits so that features overlapping the region edges are kept
+AddXScale <- function(p) {
+
+  region.xlim <- c(start(region.gr), end(region.gr))
+
+  if(opt$flip_x) {
+
+    p + scale_x_reverse() + coord_cartesian(xlim = rev(region.xlim))
+
+  } else {
+
+    p + scale_x_continuous() + coord_cartesian(xlim = region.xlim)
+
+  }
+
+}
+
+# Number of arrows per transcript/gene: about 15 across the region
+ArrowSpacing <- function(region) {
+
+  max(1, round(width(region)/15, -1), round(width(region)/15))
+
+}
+
+# Cached annotation: a TxDb and a gene table, created once per GTF and stored in the user cache
+# directory (keyed on file name, size and modification time so a changed GTF is rebuilt)
+LoadAnnotation <- function(gtf.file, cache.dir) {
+
+  if(is.null(cache.dir)) cache.dir <- tools::R_user_dir("clipplotr", which = "cache")
+  info <- file.info(gtf.file)
+  key <- sprintf("%s_%.0f_%.0f", sub("\\.(gtf|gff|gff2)(\\.gz)?$", "", basename(gtf.file), ignore.case = TRUE), info$size, as.numeric(info$mtime))
+  txdb.file <- file.path(cache.dir, paste0(key, ".sqlite"))
+  genes.file <- file.path(cache.dir, paste0(key, ".genes.rds"))
+
+  if(file.exists(txdb.file) && file.exists(genes.file)) {
+
+    message("INFO: ...loading cached annotation database from ", cache.dir)
+    return(list(TxDb = loadDb(txdb.file), genes = readRDS(genes.file)))
+
+  }
+
+  message("INFO: ...creating annotation database for future runs")
+  gtf <- import(gtf.file, format = "gtf")
+  genes.gr <- gtf[gtf$type == "gene", c("gene_id", "gene_name")]
+  make_txdb <- if(requireNamespace("txdbmaker", quietly = TRUE)) txdbmaker::makeTxDbFromGRanges else GenomicFeatures::makeTxDbFromGRanges
+  TxDb <- suppressWarnings(suppressMessages(make_txdb(gtf)))
+
+  saved <- tryCatch({
+    dir.create(cache.dir, showWarnings = FALSE, recursive = TRUE)
+    saveDb(TxDb, txdb.file)
+    saveRDS(genes.gr, genes.file)
+    TRUE
+  }, error = function(e) FALSE)
+  if(!saved) message("WARNING: Could not write annotation cache to ", cache.dir, "; it will be rebuilt next time")
+
+  return(list(TxDb = TxDb, genes = genes.gr))
+
 }
 
 # ==========
 # Part 0 - Create annotation and get relevant regions in bedgraphs
 # ==========
 
-# Create rosetta and TxDb
 message("INFO: Loading annotation GTF")
 
-gtf <- rtracklayer::import.gff2(opt$gtf)
-if(!opt$no_ucsc) seqlevelsStyle(gtf) <- "UCSC"
-genes.gr <- gtf[gtf$type == "gene"]
-
-# Create TxDb if doesn't already exist
-if(file.exists(gsub(".gtf.gz|.gtf", ".sqlite", opt$gtf))) {
-
-  message("INFO: ...loading pre-existing annotation database")    
-  TxDb <- loadDb(gsub(".gtf.gz|.gtf", ".sqlite", opt$gtf))
-  if(!opt$no_ucsc) seqlevelsStyle(TxDb) <- "UCSC"
-  
-} else {
-
-  message("INFO: ...creating annotation database for future runs")
-  TxDb <- suppressMessages(makeTxDbFromGFF(opt$gtf))
-  if(!opt$no_ucsc) seqlevelsStyle(TxDb) <- "UCSC"
-  saveDb(TxDb, gsub(".gtf.gz|.gtf", ".sqlite", opt$gtf))
-
+annotation <- LoadAnnotation(opt$gtf, opt$cache_dir)
+TxDb <- annotation$TxDb
+genes.gr <- annotation$genes
+if(!opt$no_ucsc) {
+  seqlevelsStyle(TxDb) <- "UCSC"
+  seqlevelsStyle(genes.gr) <- "UCSC"
 }
 
 # Define region
-if(grepl("^ENS", opt$region)) {
-  
-  region.gr <- genes.gr[grepl(opt$region, genes.gr$gene_id)]
-  
+region.coords <- regmatches(opt$region, regexec("^([^:]+):([0-9,]+)[:-]([0-9,]+):([+-])$", opt$region))[[1]]
+
+if(length(region.coords) == 5) {
+
+  region.gr <- GRanges(seqnames = region.coords[2],
+                       ranges = IRanges(start = as.integer(gsub(",", "", region.coords[3])),
+                                        end = as.integer(gsub(",", "", region.coords[4]))),
+                       strand = region.coords[5])
+  # Non-standard contigs have no UCSC equivalent, so leave their name as given
+  if(!opt$no_ucsc) region.gr <- tryCatch({ seqlevelsStyle(region.gr) <- "UCSC"; region.gr }, error = function(e) region.gr)
+
 } else if(grepl(":", opt$region)) {
-  
-  region.gr <- GRanges(seqnames = Rle(sapply(strsplit(opt$region, ":"), "[[", 1)),
-                       ranges = IRanges(start = as.integer(sapply(strsplit(opt$region, ":"), "[[", 2)),
-                                        end = as.integer(sapply(strsplit(opt$region, ":"), "[[", 3))),
-                       strand = Rle(sapply(strsplit(opt$region, ":"), "[[", 4)))
+
+  Fail("region '", opt$region, "' should be given as chromosome:start:end:strand, e.g. chr3:35754106:35856276:+")
+
+} else if(grepl("^ENS", opt$region)) {
+
+  # Match gene id with or without the version suffix
+  unversioned <- function(x) sub("\\..*$", "", x)
+  region.gr <- genes.gr[genes.gr$gene_id == opt$region | unversioned(genes.gr$gene_id) == unversioned(opt$region)]
+
 } else {
-  # region.gr <- genes.gr[grepl(opt$region, genes.gr$gene_name)]
-  region.gr <- genes.gr[opt$region == genes.gr$gene_name]
-  if(!opt$no_ucsc) seqlevelsStyle(region.gr) <- "UCSC"
+
+  region.gr <- genes.gr[genes.gr$gene_name %in% opt$region]
 
 }
 
-seqlevels(region.gr) <- as.character(unique(seqnames(region.gr))) # Cut down to one seqlevels for later comparision
+if(length(region.gr) == 0) Fail("region '", opt$region, "' was not found in the GTF")
 
 if(length(region.gr) > 1) {
 
-  stop("ERROR: There are more than one genes with the given identifier. Consider specifying the coordinates instead.")
+  Fail("There are more than one genes with the given identifier (", paste(region.gr$gene_id, collapse = ", "), "). Consider specifying the coordinates instead.")
 
 }
 
-print(region.gr)
+if(end(region.gr) < start(region.gr)) Fail("region end is before region start")
+if(!as.character(strand(region.gr)) %in% c("+", "-")) Fail("region needs a strand (+ or -)")
+
+seqlevels(region.gr) <- as.character(unique(seqnames(region.gr))) # Cut down to one seqlevels for later comparision
+mcols(region.gr) <- NULL
+
+message("INFO: Region is ", seqnames(region.gr), ":", start(region.gr), "-", end(region.gr), ":", strand(region.gr))
+
+if(opt$smoothing == "rollmean" && opt$smoothing_window > width(region.gr)) {
+
+  Fail("--smoothing_window (", opt$smoothing_window, ") is larger than the region (", width(region.gr), " nt)")
+
+}
 
 # ==========
 # Part 1a - top half: normalised and smoothed tracks
@@ -232,16 +375,15 @@ print(region.gr)
 
 # Read in xlinks
 message("INFO: Plotting crosslink track(s)")
-xlink.files <- strsplit(opt$xlinks, ",")[[1]]
 
-if(all(grepl("bedgraph$|bedgraph.gz$", xlink.files))) {
+if(all(grepl("\\.bedgraph(\\.gz)?$", xlink.files, ignore.case = TRUE))) {
 
   xlinks <- lapply(xlink.files, ImportiMapsBedgraph)
 
-} else if(all(grepl("bed$|bed.gz$", xlink.files))) {
+} else if(all(grepl("\\.bed(\\.gz)?$", xlink.files, ignore.case = TRUE))) {
 
   xlinks <- lapply(xlink.files, function(x) {
-    
+
     xlinks.gr <- import.bed(x)
     if(!opt$no_ucsc) seqlevelsStyle(xlinks.gr) <- "UCSC"
     return(xlinks.gr)
@@ -250,89 +392,75 @@ if(all(grepl("bedgraph$|bedgraph.gz$", xlink.files))) {
 
 } else {
 
-  stop("ERROR: Crosslink files need to be in iCount bedgraph or bed format.")
-  quit(save = "no")
+  Fail("Crosslink files need to be all in iCount bedgraph (.bedgraph) or all in bed (.bed) format.")
 
 }
 
-# Actually only need to do this if normalisation strategy is libSize
-if(opt$normalisation %in% c("libsize", "maxpeak", "libsize_maxpeak", "none")) {
-  
-  libSizes <- lapply(xlinks, function(x) { sum(abs(x$score)) })
+if(opt$normalisation %in% c("custom", "custom_maxpeak")) {
 
-} else if(opt$normalisation == "custom" | opt$normalisation == "custom_maxpeak") {
-  
-  if(is.null(opt$size_factors)) {
-    
-    message("ERROR: No size factors defined")
-    quit(save = "no")
-    
-  }
-  
-  libSizes <- as.numeric(strsplit(opt$size_factors, ",")[[1]])
-  
+  libSizes <- size.factors
+
+} else {
+
+  libSizes <- sapply(xlinks, function(x) sum(abs(x$score)))
+
 }
+
 # Subset for region and add in 0 count position
 xlinks <- lapply(xlinks, function(x) SubsetBedgraph(gr = x, selected.region.gr = region.gr))
 
-# Names of bedgraphs: If name is supplied use that, if not then generate a name from the file name
-if (!is.null(opt$label)) {
-  
-  track_names <- strsplit(opt$label, ",")[[1]]
-
-} else {
-  
-  track_names <- lapply(strsplit(opt$xlinks, ",")[[1]], function(x) substr(basename(x), start = 1, stop = 10))
-  
-}
-
 # Create datatable for plotting
 xlinks.dt <- lapply(seq_along(xlinks), function(i) {
-  
+
   dt <- as.data.table(xlinks[[i]])
-  dt$sample <- track_names[[i]]
-  dt$libSize <- libSizes[[i]]
+  dt$sample <- track_names[i]
+  dt$libSize <- libSizes[i]
   return(dt)
-  
+
 })
-xlinks.dt <- rbindlist(xlinks.dt)  
-setkey(xlinks.dt, sample)
+xlinks.dt <- rbindlist(xlinks.dt)
+xlinks.dt[, sample := factor(sample, levels = track_names)]
 
 # Do the normalisation
 message("INFO: ...normalising")
-xlinks.dt[, norm := switch(opt$normalisation, 
+xlinks.dt[, norm := switch(opt$normalisation,
                            "libsize" = (score * 1e6)/libSize,
                            "libsize_maxpeak" = (score * 1e6)/libSize,
-                          #  "maxpeak" = score/max(score),
-                          #  "maxpeak" = (score * 1e6)/libSize,
                            "maxpeak" = score,
                            "none" = score,
                            "custom" = score/libSize,
-                           "custom_maxpeak" = score/libSize), 
+                           "custom_maxpeak" = score/libSize),
           by = sample]
 
 # Do the smoothing
 message("INFO: ...smoothing")
-xlinks.dt[, smoothed := switch(opt$smoothing, 
-                               "gaussian" = smth.gaussian(norm, window = opt$smoothing_window),
+xlinks.dt[, smoothed := switch(opt$smoothing,
                                "rollmean" = rollmean(norm, opt$smoothing_window, fill = 0),
-                               "none" = norm), 
+                               "none" = norm),
           by = sample]
 
 # Assign groups
-if(!is.null(opt$groups)) {
+if(!is.null(xlink.groups)) {
 
-  groups.dt <- data.table(sample = track_names, grp = strsplit(opt$group, ",")[[1]])
-  groups.dt$grp <- factor(groups.dt$grp, levels = unique(strsplit(opt$group, ",")[[1]]))
+  groups.dt <- data.table(sample = factor(track_names, levels = track_names),
+                          grp = factor(xlink.groups, levels = unique(xlink.groups)))
   xlinks.dt <- merge(xlinks.dt, groups.dt, by = "sample")
 
 }
 
-# Now normalise to max peak after smoothing
-if(grepl("maxpeak",opt$normalisation) & is.null(opt$groups)) xlinks.dt[, smoothed := smoothed/(max(smoothed)), by = sample]
-if(grepl("maxpeak",opt$normalisation) & !is.null(opt$groups)) xlinks.dt[, smoothed := smoothed/(max(smoothed)), by = grp]
+# Now normalise to max peak after smoothing (leave tracks with no signal at 0)
+ScaleToMax <- function(x) if(max(x) > 0) x/max(x) else x
+if(grepl("maxpeak", opt$normalisation)) {
 
-y.label <- switch(opt$normalisation, 
+  if(is.null(xlink.groups)) {
+    xlinks.dt[, smoothed := ScaleToMax(smoothed), by = sample]
+  } else {
+    xlinks.dt[, smoothed := ScaleToMax(smoothed), by = grp]
+  }
+
+}
+
+y.label <- switch(opt$normalisation,
                   "libsize" = "Crosslink signal\n(counts per million)",
                   "libsize_maxpeak" = "Crosslink signal\n(counts per million\nnormalised to max peak)",
                   "maxpeak" = "Crosslink signal\n(normalised to max peak)",
@@ -341,156 +469,102 @@ y.label <- switch(opt$normalisation,
                   "custom_maxpeak" = "Crosslink signal\n(custom normalisation\nadjusted to max peak)")
 
 # Plot top half
-if(is.null(opt$colours)) {
-
 p.iclip <- ggplot(xlinks.dt) +
   geom_line(aes(x = start, y = smoothed, group = sample, color = sample)) +
   labs(title = opt$region,
        x = "",
        y = y.label,
        colour = "") +
-  scale_colour_tableau(palette = "Tableau 10") +
-  theme_minimal_grid() + theme(legend.position = "top") #+
-  # xlim(start(region.gr),end(region.gr))
+  theme_minimal_grid() + theme(legend.position = "top")
 
-  } else {
+if(is.null(xlink.cols)) {
 
-    cols <- strsplit(opt$colours, ",")[[1]]
-    names(cols) <- track_names
+  p.iclip <- p.iclip + scale_colour_tableau(palette = "Tableau 10")
 
-    p.iclip <- ggplot(xlinks.dt) +
-      geom_line(aes(x = start, y = smoothed, group = sample, color = sample)) +
-      labs(title = opt$region,
-           x = "",
-           y = y.label,
-           colour = "") +
-      scale_colour_manual(values = cols) +
-      theme_minimal_grid() + theme(legend.position = "top") #+
-      # xlim(start(region.gr),end(region.gr))
+} else {
+
+  p.iclip <- p.iclip + scale_colour_manual(values = setNames(xlink.cols, track_names))
 
 }
 
-# Change y-axis label depending on normalisation
-
 # Facet if groups
-if(!is.null(opt$groups)) {
+if(!is.null(xlink.groups)) {
 
-  if(opt$scale_y == TRUE) {
+  p.iclip <- p.iclip +
+    facet_grid(grp ~ ., scales = ifelse(opt$scale_y, "free_y", "fixed"), labeller = label_wrap_gen(10)) +
+    theme(strip.text.y = element_text(size = 10, angle = 0, hjust = 0))
 
-    p.iclip <- p.iclip + facet_grid(grp ~ ., scales = "free_y", labeller = label_wrap_gen(10)) + theme(strip.text.y = element_text(size = 10, angle = 0, hjust = 0))
-
-  } else {
-
-    p.iclip <- p.iclip + facet_grid(grp ~ ., labeller = label_wrap_gen(10)) + theme(strip.text.y = element_text(size = 10, angle = 0, hjust = 0))
-
-  }
 }
 
 # Add highlight
 if(!is.null(opt$highlight)) {
 
-  highlight.dt <- data.table(x1 = as.integer(strsplit(opt$highlight, ":")[[1]][1]),
-                             x2 = as.integer(strsplit(opt$highlight, ":")[[1]][2]),
+  highlight.dt <- data.table(x1 = highlight[1],
+                             x2 = highlight[2],
                              y1 = 0,
                              y2 = Inf) # Assumes not facetted with free scales
   p.iclip <- p.iclip + geom_rect(data = highlight.dt, aes(xmin = x1, xmax = x2, ymin = y1, ymax = y2), fill = "grey50", alpha = 0.2)
-  
+
 }
 
 if(!is.null(opt$tidy_y_labels)) {
 
-  # p.iclip <- p.iclip + scale_y_continuous(breaks = scales::breaks_extended(n = opt$tidy_y_labels))
   p.iclip <- p.iclip + scale_y_continuous(n.breaks = opt$tidy_y_labels)
 
 }
 
-if(opt$flip_x) {
-
-  p.iclip <- p.iclip + scale_x_reverse(limits = rev(c(start(region.gr), end(region.gr))))
-
-} else {
-
-  p.iclip <- p.iclip + scale_x_continuous(limits = c(start(region.gr), end(region.gr)))
-
-}
+p.iclip <- AddXScale(p.iclip)
 
 # ==========
 # Part 1b - top half: auxiliary file annotation (eg.peaks)
 # ==========
 
-if(!is.null(opt$auxiliary)) {
+if(!is.null(auxiliary.files)) {
 
   message("INFO: Plotting auxiliary track(s)")
 
-  auxiliary.files <- strsplit(opt$auxiliary, ",")[[1]]
-
-  # Names of bedgraphs: If name is supplied use that, if not then generate a name from the file name
-  if (!is.null(opt$auxiliary_labels)) {
-  
-    auxiliary.labels <- strsplit(opt$auxiliary_labels, ",")[[1]]
-  
-  } else {
-  
-    auxiliary.labels <- substr(gsub(".bed|.bed.gz", "", basename(auxiliary.files)), start = 1, stop = 10)
-  
-  }
-
-
   auxiliary.grl <- lapply(auxiliary.files, function(x) {
-    
+
     auxiliary.gr <- import.bed(x)
     if(!opt$no_ucsc) seqlevelsStyle(auxiliary.gr) <- "UCSC"
-    return(auxiliary.gr)
+    return(subsetByOverlaps(auxiliary.gr, region.gr, ignore.strand = FALSE))
 
   })
 
-  auxiliary.grl <- lapply(auxiliary.grl, function(x) subsetByOverlaps(x, region.gr, ignore.strand = FALSE))
-
-  auxiliary.dt <- rbindlist(lapply(auxiliary.grl, as.data.table))
+  auxiliary.dt <- rbindlist(lapply(auxiliary.grl, as.data.table), fill = TRUE)
   auxiliary.dt$exp <- rep(auxiliary.labels, elementNROWS(auxiliary.grl))
-  auxiliary.dt$centre <- with(auxiliary.dt, start + width/2) # Replace this with data.table syntax, but need to check groups first
+  auxiliary.dt[, centre := start + width/2]
 
-  if(nrow(auxiliary.dt) != 0) {
+  if(nrow(auxiliary.dt) == 0) message("INFO: ...no auxiliary features in the region")
 
-    if("itemRgb" %in% colnames(auxiliary.dt)) {
+  # Features without a colour (e.g. from a BED6 file mixed with BED9) are drawn in the default dark grey
+  use.itemRgb <- "itemRgb" %in% colnames(auxiliary.dt) && nrow(auxiliary.dt) > 0
+  if(use.itemRgb) auxiliary.dt[is.na(itemRgb), itemRgb := "grey20"]
 
-      auxiliary.cols <- unique(auxiliary.dt$itemRgb)
-      names(auxiliary.cols) <- auxiliary.cols
-          
-      p.auxiliary <- ggplot(auxiliary.dt, aes(x = centre, width = width, y = exp, fill = itemRgb)) +
-        geom_tile() +
-        scale_y_discrete(breaks = auxiliary.labels,
-                         limits = rev(sort(auxiliary.labels))) +
-        # xlim(start(region.gr), end(region.gr)) +
-        scale_fill_manual(values = auxiliary.cols) +
-        labs(y = "",
-             x = "") +
-        theme_minimal_grid() + theme(legend.position = "none")
-      
-    } else {
-      
-      p.auxiliary <- ggplot(auxiliary.dt, aes(x = centre, width = width, y = exp)) +
-        geom_tile() +
-        scale_y_discrete(breaks = auxiliary.labels,
-                         limits = rev(sort(auxiliary.labels))) +
-        # xlim(start(region.gr), end(region.gr)) +
-        labs(y = "",
-             x = "") +
-        theme_minimal_grid()
-      
-    }
+  p.auxiliary <- ggplot(auxiliary.dt, aes(x = centre, width = width, y = exp)) +
+    scale_y_discrete(breaks = auxiliary.labels,
+                     limits = rev(sort(auxiliary.labels))) +
+    labs(y = "",
+         x = "") +
+    theme_minimal_grid()
 
-  }
+  if(use.itemRgb) {
 
-  if(opt$flip_x) {
+    auxiliary.cols <- unique(auxiliary.dt$itemRgb)
+    names(auxiliary.cols) <- auxiliary.cols
 
-    p.auxiliary <- p.auxiliary + scale_x_reverse(limits = rev(c(start(region.gr), end(region.gr))))
+    p.auxiliary <- p.auxiliary +
+      geom_tile(aes(fill = itemRgb)) +
+      scale_fill_manual(values = auxiliary.cols) +
+      theme(legend.position = "none")
 
   } else {
 
-    p.auxiliary <- p.auxiliary + scale_x_continuous(limits = c(start(region.gr), end(region.gr)))
+    p.auxiliary <- p.auxiliary + geom_tile()
 
   }
+
+  p.auxiliary <- AddXScale(p.auxiliary)
 
 }
 
@@ -499,98 +573,111 @@ if(!is.null(opt$auxiliary)) {
 # Part 1c - top half: RNA-seq/coverage tracks
 # ==========
 
-if(!is.null(opt$coverage)) {
-  
+if(!is.null(coverage.files)) {
+
   message("INFO: Plotting coverage track(s)")
-  coverage.files <- strsplit(opt$coverage, ",")[[1]]
-  # coverage.grl <- lapply(coverage.files, import.bw, selection = region.gr) # addition selection speeds up loading - removed incase seqnames different style
+
   coverage.grl <- lapply(coverage.files, function(x) {
 
-    gr <- import.bw(x)
-    if(!opt$no_ucsc) seqlevelsStyle(gr) <- "UCSC"
-    gr <- subsetByOverlaps(gr, region.gr)
-    return(gr)
+    # Only read the region of interest, matching the chromosome naming style of the bigwig
+    bw.chr <- MatchSeqname(as.character(seqnames(region.gr)), seqlevels(BigWigFile(x)))
+
+    if(is.na(bw.chr)) {
+
+      message("WARNING: ", seqnames(region.gr), " not found in ", x, "; coverage will be 0")
+      gr <- GRanges()
+
+    } else {
+
+      selection <- GRanges(bw.chr, ranges(region.gr))
+      gr <- import.bw(x, selection = BigWigSelection(selection))
+      seqlevels(gr) <- bw.chr
+      seqlevels(gr) <- as.character(seqnames(region.gr))
+
+    }
+
+    return(SubsetBedgraph(gr = gr, selected.region.gr = region.gr))
 
   })
 
-  coverage.grl <- lapply(coverage.grl, function(x) SubsetBedgraph(gr = x, selected.region.gr = region.gr))
-  # coverage.grl <- lapply(auxiliary.grl, function(x) subsetByOverlaps(x, region.gr, ignore.strand = FALSE))
   coverage.dt <- rbindlist(lapply(coverage.grl, as.data.table))
+  coverage.dt$exp <- factor(rep(coverage.labels, elementNROWS(coverage.grl)), levels = coverage.labels)
 
-  # Names of coverage tracks
-  if (!is.null(opt$coverage_labels)) {
-  
-    coverage.dt$exp <-  rep(strsplit(opt$coverage_labels, ",")[[1]], elementNROWS(coverage.grl))
-    coverage.dt$exp <- factor(coverage.dt$exp, levels=strsplit(opt$coverage_labels, ",")[[1]])
-  
-  } else {
-  
-    coverage.dt$exp <- rep(gsub(".bw|.bigwig|.bigWig", "", coverage.files), elementNROWS(coverage.grl))
-    coverage.dt$exp <- factor(coverage.dt$exp, levels=gsub(".bw|.bigwig|.bigWig", "", coverage.files))
-  
-  }
-  
-  if(!is.null(opt$coverage_groups)) {
+  if(!is.null(coverage.groups)) {
 
-    coverage_groups.dt <- data.table(exp = factor(levels(coverage.dt$exp), levels(coverage.dt$exp)), grp = strsplit(opt$coverage_groups, ",")[[1]])
-    coverage_groups.dt$grp <- factor(coverage_groups.dt$grp, levels = unique(strsplit(opt$coverage_groups, ",")[[1]]))
+    coverage_groups.dt <- data.table(exp = factor(coverage.labels, levels = coverage.labels),
+                                     grp = factor(coverage.groups, levels = unique(coverage.groups)))
     coverage.dt <- merge(coverage.dt, coverage_groups.dt, by = "exp")
 
   }
 
-  if(!is.null(opt$coverage_colours)) {
+  p.coverage <- ggplot(coverage.dt, aes(x = start, y = score, col = exp)) +
+    geom_line() +
+    labs(x = "",
+         y = "Coverage",
+         colour = "") +
+    theme_minimal_grid() + theme(legend.position = "bottom") + theme(strip.text.y = element_text(size = 10, angle = 0, hjust = 0))
 
-    coverage_colours <- strsplit(opt$coverage_colours, ",")[[1]]
-    names(coverage_colours) <- levels(coverage.dt$exp)
+  if(!is.null(coverage.cols)) {
 
-    p.coverage <- ggplot(coverage.dt, aes(x = start, y = score, col = exp)) +
-      geom_line() +
-      labs(x = "",
-          y = "Coverage",
-          colour = "") +
-      scale_colour_manual(values = coverage_colours) +
-      theme_minimal_grid() + theme(legend.position = "bottom") + theme(strip.text.y = element_text(size = 10, angle = 0, hjust = 0)) #+
-      # xlim(start(region.gr), end(region.gr))
+    p.coverage <- p.coverage + scale_colour_manual(values = setNames(coverage.cols, coverage.labels))
 
   } else {
 
-    p.coverage <- ggplot(coverage.dt, aes(x = start, y = score, col = exp)) +
-      geom_line() +
-      labs(x = "",
-           y = "Coverage",
-           colour = "") +
-      scale_colour_tableau(palette = "Superfishel Stone") +
-      theme_minimal_grid() + theme(legend.position = "bottom") + theme(strip.text.y = element_text(size = 10, angle = 0, hjust = 0)) #+
-      # xlim(start(region.gr), end(region.gr))
+    p.coverage <- p.coverage + scale_colour_tableau(palette = "Superfishel Stone")
 
   }
 
-  if(!is.null(opt$coverage_groups)) {
+  if(!is.null(coverage.groups)) {
 
     p.coverage <- p.coverage + facet_grid(grp ~ ., scales = "free_y", labeller = label_wrap_gen(10)) + theme(strip.text.y = element_text(size = 10, angle = 0, hjust = 0))
 
   }
 
-  if(opt$flip_x) {
-
-    p.coverage <- p.coverage + scale_x_reverse(limits = rev(c(start(region.gr), end(region.gr))))
-
-  } else {
-
-    p.coverage <- p.coverage + scale_x_continuous(limits = c(start(region.gr), end(region.gr)))
-
-  }
+  p.coverage <- AddXScale(p.coverage)
 
 }
-  
+
 # ==========
 # Part 2 - bottom half: gene structures
 # ==========
 
-message("INFO: Plotting annotation tracks")
-
 rosetta.dt <- as.data.table(mcols(genes.gr))[, .(gene_id, gene_name)]
 setkey(rosetta.dt, gene_id)
+
+# Split a region into arrow segments covering each of the given features (genes or transcripts)
+# so that the intron line shows the direction of transcription
+ArrowSegments <- function(features, ids, id.column) {
+
+  region.tiled <- tile(rep(region.gr, length(features)), width = ArrowSpacing(region.gr))
+
+  segments <- GRangesList(lapply(seq_along(features), function(i) {
+    gr <- subsetByOverlaps(region.tiled[[i]], features[i], type = "any")
+    # Need to adjust for ends
+    start(gr[1]) <- start(features[i])
+    end(gr[length(gr)]) <- end(features[i])
+    return(gr)
+  }))
+
+  names(segments) <- ids
+  segments.dt <- as.data.table(segments)
+  segments.dt[, group := NULL]
+  setnames(segments.dt, "group_name", id.column)
+  if(as.character(strand(region.gr)) == "-") setnames(segments.dt, c("start", "end"), c("end", "start"))
+
+  return(segments.dt)
+
+}
+
+AnnotationTheme <- function(p) {
+
+  p + theme_minimal_vgrid() +
+    theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), legend.position = "bottom") +
+    labs(x = "Coordinate",
+         y = "",
+         fill = "")
+
+}
 
 # ==========
 # Plot gene kind of structure
@@ -598,55 +685,39 @@ setkey(rosetta.dt, gene_id)
 
 if(opt$annotation == "gene") {
 
-  exons_g.grl <- exonsBy(TxDb, by = "gene")
-  
+  message("INFO: Plotting annotation tracks")
+
   sel.genes <- subsetByOverlaps(genes.gr, region.gr)
-  sel.exons <- exons(TxDb, filter = list(gene_id = sel.genes$gene_id), columns = "gene_id")
-  
-  # Region (for arrows)
-  region.gr$gene_id <- NULL
-  region.tiled <- rep(region.gr, length(sel.genes)) # Create one for each gene
-  region.tiled <- tile(region.tiled, width = 500)
-  
-  sel.region.tiled <- GRangesList(lapply(seq_along(sel.genes), function(i) {
-    gr <- subsetByOverlaps(region.tiled[[i]], sel.genes[i], type = "any")
-    # Need to adjust for ends
-    start(gr[1]) <- start(sel.genes[i])
-    end(gr[length(gr)]) <- end(sel.genes[i])
-    return(gr)
-  }))
-  
-  names(sel.region.tiled) <- sel.genes$gene_id
-  sel.region.tiled.dt <- as.data.table(sel.region.tiled)
-  setnames(sel.region.tiled.dt, "group_name", "gene_id")
-  
-  if(as.character(strand(region.gr)) == "-") setnames(sel.region.tiled.dt, c("start", "end"), c("end", "start"))
-  
-  # Exons
-  sel.exons.dt <- as.data.table(sel.exons)
-  sel.exons.dt$gene_id <- as.character(sel.exons.dt$gene_id) # otherwise type is AsIs
-  sel.exons.dt <- merge(sel.exons.dt, unique(sel.region.tiled.dt[, .(group, gene_id)]), by = "gene_id")
-  
-  # Plot
-  p.annot <- ggplot() +
-    geom_segment(data = sel.region.tiled.dt, mapping = aes(x = start, xend = end, y = group, yend = group), arrow = arrow(length = unit(0.1, "cm")), colour = "grey50") +
-    geom_rect(data = sel.exons.dt, mapping = aes(xmin = start, xmax = end, ymin = group - 0.25, ymax = group + 0.25, fill = gene_id)) +
-    theme_minimal_vgrid() + theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), legend.position = "bottom") +
-    scale_fill_tableau() +
-    labs(x = "Coordinate",
-         y = "",
-         fill = "") # +
-    # coord_cartesian(xlim = c(start(region.gr), end(region.gr)))
 
-  if(opt$flip_x) {
+  if(length(sel.genes) == 0) {
 
-    p.annot <- p.annot + scale_x_reverse() + coord_cartesian(xlim = rev(c(start(region.gr), end(region.gr))))
+    message("INFO: ...no genes in the region")
+    p.annot <- AnnotationTheme(ggplot())
 
   } else {
-      
-    p.annot <- p.annot + scale_x_continuous() + coord_cartesian(xlim = c(start(region.gr), end(region.gr)))
+
+    sel.exons <- exons(TxDb, filter = list(gene_id = sel.genes$gene_id), columns = "gene_id")
+
+    # Region (for arrows)
+    sel.region.tiled.dt <- ArrowSegments(sel.genes, sel.genes$gene_id, "gene_id")
+    genes.order.dt <- data.table(gene_id = sel.genes$gene_id, group = seq_along(sel.genes))
+    sel.region.tiled.dt <- merge(sel.region.tiled.dt, genes.order.dt, by = "gene_id")
+
+    # Exons
+    sel.exons.dt <- as.data.table(sel.exons)
+    sel.exons.dt$gene_id <- as.character(sel.exons.dt$gene_id) # otherwise type is AsIs
+    sel.exons.dt <- merge(sel.exons.dt, genes.order.dt, by = "gene_id")
+
+    # Plot
+    p.annot <- ggplot() +
+      geom_segment(data = sel.region.tiled.dt, mapping = aes(x = start, xend = end, y = group, yend = group), arrow = arrow(length = unit(0.1, "cm")), colour = "grey50") +
+      geom_rect(data = sel.exons.dt, mapping = aes(xmin = start, xmax = end, ymin = group - 0.25, ymax = group + 0.25, fill = gene_id)) +
+      scale_fill_tableau()
+    p.annot <- AnnotationTheme(p.annot)
 
   }
+
+  p.annot <- AddXScale(p.annot)
 
 }
 
@@ -655,149 +726,65 @@ if(opt$annotation == "gene") {
 # ==========
 
 if(opt$annotation == "transcript") {
-  
+
+  message("INFO: Plotting annotation tracks")
+
   # Get transcripts that overlap region and order for plotting
   sel.tx_genes <- transcriptsByOverlaps(TxDb, region.gr, columns = c("gene_id", "tx_name"))
   sel.tx_genes <- sel.tx_genes[order(width(sel.tx_genes), decreasing = TRUE)]
-  tx.order.dt <- data.table(transcript_id = sel.tx_genes$tx_name,
-                            gene_id = unlist(sel.tx_genes$gene_id),
-                            centre = start(sel.tx_genes) + width(sel.tx_genes)/2)[, group := 1:.N]
-  setkey(tx.order.dt, gene_id)
-  tx.order.dt <- rosetta.dt[tx.order.dt]
-  tx.order.dt[, gene := paste0(gene_name, " | ", gene_id)]
-  
-  # Region (for arrows)
-  region <- region.gr
-  region$gene_id <- NULL
-  region.tiled <- rep(region, length(sel.tx_genes))
-  region.tiled$tx_name <- sel.tx_genes$tx_name
-  region.tiled <- tile(region.tiled, width = round(width(region)/15, -1))
 
-  sel.region.tiled <- GRangesList(lapply(seq_along(sel.tx_genes), function(i) {
-    gr <- subsetByOverlaps(region.tiled[[i]], sel.tx_genes[i], type = "any")
-    start(gr[1]) <- start(sel.tx_genes[i])
-    end(gr[length(gr)]) <- end(sel.tx_genes[i])
-    return(gr)
-  }))
-  
-  names(sel.region.tiled) <- sel.tx_genes$tx_name
-  sel.region.tiled.dt <- as.data.table(sel.region.tiled)
-  sel.region.tiled.dt[, group := NULL]
-  setnames(sel.region.tiled.dt, "group_name", "transcript_id")
-  if(as.character(strand(region.gr)) == "-") setnames(sel.region.tiled.dt, c("start", "end"), c("end", "start"))
-  
-  sel.region.tiled.dt <- merge(sel.region.tiled.dt, tx.order.dt, by = "transcript_id")
-  
-  # CDS
-  cds_tx <- cdsBy(TxDb, by = "tx", use.names = TRUE)
-  sel.cds_tx <- cds_tx[names(cds_tx) %in% sel.tx_genes$tx_name]
-  sel.cds_tx.dt <- as.data.table(sel.cds_tx)
-  sel.cds_tx.dt[, group := NULL]
-  setnames(sel.cds_tx.dt, "group_name", "transcript_id")
-  sel.cds_tx.dt <- merge(sel.cds_tx.dt, tx.order.dt, by = "transcript_id")
-  
-  # UTR5
-  utr5_tx <- fiveUTRsByTranscript(TxDb, use.names = TRUE)
-  sel.utr5_tx <- utr5_tx[names(utr5_tx) %in% sel.tx_genes$tx_name]
-  sel.utr5_tx.dt <- as.data.table(sel.utr5_tx)
-  sel.utr5_tx.dt[, group := NULL]
-  setnames(sel.utr5_tx.dt, "group_name", "transcript_id") 
-  sel.utr5_tx.dt <- merge(sel.utr5_tx.dt, tx.order.dt, by = "transcript_id")
-    
-  # UTR3
-  utr3_tx <- threeUTRsByTranscript(TxDb, use.names = TRUE)
-  sel.utr3_tx <- utr3_tx[names(utr3_tx) %in% sel.tx_genes$tx_name]
-  sel.utr3_tx.dt <- as.data.table(sel.utr3_tx)
-  sel.utr3_tx.dt[, group := NULL]
-  setnames(sel.utr3_tx.dt, "group_name", "transcript_id")
-  sel.utr3_tx.dt <- merge(sel.utr3_tx.dt, tx.order.dt, by = "transcript_id")
-  
-  # Exons
-  exons_tx <- exonsBy(TxDb, by = "tx", use.names = TRUE)
-  sel.exons_tx <- exons_tx[names(exons_tx) %in% sel.tx_genes$tx_name[!sel.tx_genes$tx_name %in% names(sel.cds_tx)]] # Don't want genes with CDS, just e.g. ncRNA
-  sel.exons_tx.dt <- as.data.table(sel.exons_tx)
-  sel.exons_tx.dt[, group := NULL]
-  setnames(sel.exons_tx.dt, "group_name", "transcript_id")
-  sel.exons_tx.dt <- merge(sel.exons_tx.dt, tx.order.dt, by = "transcript_id")
-  
-  # Plot
-  p.annot <- ggplot() +
-    geom_segment(data = sel.region.tiled.dt, mapping = aes(x = start, xend = end, y = group, yend = group), arrow = arrow(length = unit(0.1, "cm")), colour = "grey50") +
-    geom_rect(data = sel.exons_tx.dt, mapping = aes(xmin = start, xmax = end, ymin = group - 0.25, ymax = group + 0.25, fill = gene)) +
-    geom_rect(data = sel.cds_tx.dt, mapping = aes(xmin = start, xmax = end, ymin = group - 0.25, ymax = group + 0.25, fill = gene)) +
-    geom_rect(data = sel.utr5_tx.dt, mapping = aes(xmin = start, xmax = end, ymin = group - 0.15, ymax = group + 0.15, fill = gene)) +
-    geom_rect(data = sel.utr3_tx.dt, mapping = aes(xmin = start, xmax = end, ymin = group - 0.15, ymax = group + 0.15, fill = gene)) +
-    scale_fill_tableau() +
-    theme_minimal_vgrid() + theme(axis.line.y = element_blank(), axis.ticks.y = element_blank(), axis.text.y = element_blank(), legend.position = "bottom") +
-    labs(x = "Coordinate",
-         y = "",
-         fill = "") #+
-    # coord_cartesian(xlim = c(start(region), end(region)))
-  
-  if(opt$flip_x) {
+  if(length(sel.tx_genes) == 0) {
 
-    p.annot <- p.annot + scale_x_reverse() + coord_cartesian(xlim = rev(c(start(region.gr), end(region.gr))))
+    message("INFO: ...no transcripts in the region")
+    p.annot <- AnnotationTheme(ggplot())
 
   } else {
-      
-    p.annot <- p.annot + scale_x_continuous() + coord_cartesian(xlim = c(start(region.gr), end(region.gr)))
+
+    tx.order.dt <- data.table(transcript_id = sel.tx_genes$tx_name,
+                              gene_id = sapply(sel.tx_genes$gene_id, "[", 1),
+                              centre = start(sel.tx_genes) + width(sel.tx_genes)/2)[, group := 1:.N]
+    setkey(tx.order.dt, gene_id)
+    tx.order.dt <- rosetta.dt[tx.order.dt]
+    tx.order.dt[, gene := paste0(gene_name, " | ", gene_id)]
+
+    # Region (for arrows)
+    sel.region.tiled.dt <- ArrowSegments(sel.tx_genes, sel.tx_genes$tx_name, "transcript_id")
+    sel.region.tiled.dt <- merge(sel.region.tiled.dt, tx.order.dt, by = "transcript_id")
+
+    # CDS, UTRs and, for transcripts without a CDS (e.g. ncRNA), exons
+    # (half-height 0.25 for exons and CDS, 0.15 for UTRs)
+    FeatureTable <- function(grl, tx, half.height) {
+
+      grl <- grl[names(grl) %in% tx]
+      dt <- as.data.table(grl)
+      if(nrow(dt) == 0) return(NULL)
+      dt[, group := NULL]
+      setnames(dt, "group_name", "transcript_id")
+      dt <- merge(dt, tx.order.dt, by = "transcript_id")
+      dt[, `:=`(ymin = group - half.height, ymax = group + half.height)]
+      return(dt)
+
+    }
+
+    cds_tx <- cdsBy(TxDb, by = "tx", use.names = TRUE)
+    noncoding.tx <- sel.tx_genes$tx_name[!sel.tx_genes$tx_name %in% names(cds_tx)]
+
+    features.dt <- rbindlist(list(FeatureTable(exonsBy(TxDb, by = "tx", use.names = TRUE), noncoding.tx, 0.25),
+                                  FeatureTable(cds_tx, sel.tx_genes$tx_name, 0.25),
+                                  FeatureTable(fiveUTRsByTranscript(TxDb, use.names = TRUE), sel.tx_genes$tx_name, 0.15),
+                                  FeatureTable(threeUTRsByTranscript(TxDb, use.names = TRUE), sel.tx_genes$tx_name, 0.15)),
+                             fill = TRUE)
+
+    # Plot
+    p.annot <- ggplot() +
+      geom_segment(data = sel.region.tiled.dt, mapping = aes(x = start, xend = end, y = group, yend = group), arrow = arrow(length = unit(0.1, "cm")), colour = "grey50") +
+      geom_rect(data = features.dt, mapping = aes(xmin = start, xmax = end, ymin = ymin, ymax = ymax, fill = gene)) +
+      scale_fill_tableau()
+    p.annot <- AnnotationTheme(p.annot)
 
   }
 
-}
-
-# ==========
-# Omit annotation plot
-# ==========
-
-if(opt$annotation == "none") {
-
-  p.annot <- ggplot() + theme_cowplot() + theme(axis.line = element_blank())
-
-}
-
-# ==========
-# Old style
-# ==========
-
-if(opt$annotation == "original") {
-
-suppressPackageStartupMessages(library(ggbio))
-
-annot.gr <- biovizBase::crunch(TxDb, which = region.gr)
-annot.gr$tx_name <- as.character(annot.gr$tx_name)
-annot.grl <- split(annot.gr, annot.gr$tx_name)
-
-
-# Need to trim exons so they don't overlap utrs to ensure they aren't overplotted
-# but only if there are exons 
-annot.grl <- GRangesList(lapply(annot.grl, function(x) {
-  if(any(grepl("exon",x$type))){
-    exon <- x[x$type == "exon"]  
-    utr <- x[x$type == "utr"]
-    strand(utr) <- unique(strand(exon)) # Otherwise utr isn't stranded, but needed for setdiff later
-    rest <- x[!x$type %in% c("utr", "exon")]
-    
-    exon <- GenomicRanges::setdiff(exon, utr, ignore.strand = FALSE)  
-    mcols(exon)$type <- "exon"
-    
-    return(sort(c(rest, exon, utr)))} else {
-      return(x)
-  }
-}))
-
-# Add gene name to labels
-gene_names <- gtf$gene_name[match(names(annot.grl), gtf$transcript_id)]
-names(annot.grl) <- paste0(gene_names, " - ", names(annot.grl))
-
-p.annot <- ggplot(data = annot.grl) +
-  geom_alignment(cds.rect.h = 0.1, length = unit(0.1, "cm"), fill = "black", stat = "identity") +
-  labs(x = "Coordinate") +
-      xlim(start(region.gr),end(region.gr)) +
-  theme_minimal_vgrid() + theme(axis.line.y = element_blank())
-
-# Select out ggplot object
-p.annot <- p.annot@ggplot
+  p.annot <- AddXScale(p.annot)
 
 }
 
@@ -805,44 +792,30 @@ p.annot <- p.annot@ggplot
 # Part 3 - combine plots
 # ==========
 
-if(is.null(opt$ratios)){ #if the user hasnt specified ratios
-  p <- p.iclip
-  ratios <- 2
-  if(exists("p.auxiliary")) {
-    p <- p / p.auxiliary
-    if(length(auxiliary.files) == 1) {
-      ratios <- c(ratios, 0.25)
-    } else {
-      ratios <- c(ratios, 0.5)
-    }
-  }
-  if(exists("p.coverage")) {
-    p <- p / p.coverage
-    ratios <- c(ratios, 2)
-  }
-  if(exists("p.annot")) {
-    p <- p / p.annot
-    ratios <- c(ratios, 3)
-    # Could change this to ifelse depending on annotation style
-  }
-  p <- p + plot_layout(heights = ratios) 
-} else { 
-  p <- p.iclip
-  ratios <- rts[[1]]
-  if(exists("p.auxiliary")) {
-    p <- p / p.auxiliary
-    ratios <- c(ratios, rts[[2]])
-  }
-  if(exists("p.coverage")) {
-    p <- p / p.coverage
-    ratios <- c(ratios, rts[[3]])
-  }
-  if(exists("p.annot")) {
-    p <- p / p.annot
-    ratios <- c(ratios, rts[[4]])
-  }
-  p <- p + plot_layout(heights = ratios) 
+# Default heights unless specified by --ratios
+if(is.null(opt$ratios)) {
+
+  rts <- c(2, ifelse(length(auxiliary.files) > 1, 0.5, 0.25), 2, 3)
+
 }
+
+p <- p.iclip
+ratios <- rts[1]
+
+if(exists("p.auxiliary")) {
+  p <- p / p.auxiliary
+  ratios <- c(ratios, rts[2])
+}
+if(exists("p.coverage")) {
+  p <- p / p.coverage
+  ratios <- c(ratios, rts[3])
+}
+if(exists("p.annot")) {
+  p <- p / p.annot
+  ratios <- c(ratios, rts[4])
+}
+
+p <- p + plot_layout(heights = ratios)
 
 ggsave(p, height = opt$size_y, width = opt$size_x, units = "mm", filename = opt$output)
 
