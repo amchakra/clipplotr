@@ -14,7 +14,7 @@ mkdir -p "$OUT_DIR"
 OUT_DIR=$(cd "$OUT_DIR" && pwd)
 trap 'rm -rf "$WORK_DIR"' EXIT
 
-cp "$TEST_DIR"/*.gz "$TEST_DIR"/*.bigwig "$WORK_DIR"/
+cp "$TEST_DIR"/*.gz "$TEST_DIR"/*.bigwig "$TEST_DIR"/*.tsv "$WORK_DIR"/
 cd "$WORK_DIR"
 
 XLINKS='test_hnRNPC_iCLIP_rep1_LUjh03_all_xlink_events.bedgraph.gz,test_hnRNPC_iCLIP_rep2_LUjh25_all_xlink_events.bedgraph.gz,test_U2AF65_iCLIP_ctrl_rep1_all_xlink_events.bedgraph.gz,test_U2AF65_iCLIP_ctrl_rep2_all_xlink_events.bedgraph.gz,test_U2AF65_iCLIP_KD1_rep2_all_xlink_events.bedgraph.gz,test_U2AF65_iCLIP_KD2_rep1_all_xlink_events.bedgraph.gz'
@@ -100,6 +100,32 @@ expect_fail gaussian_removed "gaussian smoothing has been removed" -x "$XLINKS" 
 expect_fail original_removed "original annotation style has been removed" -x "$XLINKS" -a original -r "$REGION"
 expect_fail missing_file "do not exist" -x missing.bedgraph -r "$REGION"
 expect_fail window_too_large "larger than the region" -x "$XLINKS" -r chr1:207513700:207513750:+ -w 100
+
+# Samplesheet instead of comma-separated options (same plot as the README example)
+expect_pass samplesheet --samples test_samples.tsv -n custom -s rollmean -w 50 -r "$REGION" --highlight 207513650:207513800 -a transcript
+mkdir -p sheet_dir && sed 's/\ttest_/\t..\/test_/' test_samples.tsv > sheet_dir/samples.tsv
+expect_pass samplesheet_relative_paths --samples sheet_dir/samples.tsv -n custom -r "$REGION" -a none
+expect_fail samplesheet_with_xlinks "cannot be combined" --samples test_samples.tsv -x "$XLINKS" -r "$REGION"
+
+# Several regions: {region} in the output name gives one file each
+printf 'CD55\n# a comment\nchr1:207513500:207514000:+\n' > regions.txt
+if Rscript "$CLIPPLOTR" -g "$GTF" --cache_dir "$WORK_DIR/cache" -x "$XLINKS" -r chr1:207513000:207515000:+ --regions regions.txt \
+     -w 50 -o "$OUT_DIR/multi_{region}.png" > multi.log 2>&1 \
+   && [ -s "$OUT_DIR/multi_chr1_207513000_207515000_+.png" ] && [ -s "$OUT_DIR/multi_CD55.png" ] && [ -s "$OUT_DIR/multi_chr1_207513500_207514000_+.png" ]; then
+  echo "PASS  multi_region_files"; PASSED=$((PASSED + 1))
+else
+  echo "FAIL  multi_region_files"; FAILED=$((FAILED + 1)); tail -5 multi.log | sed 's/^/      /'
+fi
+
+# Several regions in one .pdf: one page each
+if Rscript "$CLIPPLOTR" -g "$GTF" --cache_dir "$WORK_DIR/cache" -x "$XLINKS" -r 'CD55,chr1:207513500:207514000:+' -w 50 -o "$OUT_DIR/multi.pdf" > multi_pdf.log 2>&1 \
+   && [ "$(grep -ac '/Type /Page\b' "$OUT_DIR/multi.pdf")" -eq 2 ]; then
+  echo "PASS  multi_region_pdf"; PASSED=$((PASSED + 1))
+else
+  echo "FAIL  multi_region_pdf"; FAILED=$((FAILED + 1)); tail -5 multi_pdf.log | sed 's/^/      /'
+fi
+
+expect_fail multi_region_png "needs to contain {region}" -x "$XLINKS" -r 'CD55,chr1:207513500:207514000:+'
 
 echo
 echo "$PASSED passed, $FAILED failed"

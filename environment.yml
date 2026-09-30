@@ -15,7 +15,6 @@ dependencies:
   - conda-forge::r-ggthemes
   - conda-forge::r-cowplot
   - conda-forge::r-patchwork
-  - conda-forge::r-zoo
   - conda-forge::r-data.table
 
   - bioconda::bioconductor-genomeinfodb

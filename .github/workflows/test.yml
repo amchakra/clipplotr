@@ -6,14 +6,22 @@ on:
   pull_request:
 
 jobs:
-  smoke-tests:
+  tests:
     runs-on: ubuntu-latest
     container: bioconductor/bioconductor_docker:latest
     steps:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: Rscript install_libraries.R
+        run: |
+          Rscript install_libraries.R
+          Rscript -e 'BiocManager::install(c("testthat", "withr", "pkgload", "rcmdcheck"), update = FALSE, ask = FALSE)'
+
+      - name: Run unit tests
+        run: Rscript -e 'testthat::test_local(stop_on_failure = TRUE)'
+
+      - name: R CMD check
+        run: Rscript -e 'rcmdcheck::rcmdcheck(args = "--no-manual", error_on = "warning")'
 
       - name: Run smoke tests
         run: bash test/run_tests.sh plots

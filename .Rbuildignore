@@ -1,0 +1,12 @@
+^\.github$
+^\.claude$
+^test$
+^examples$
+^figures$
+^clipplotr$
+^environment\.yml$
+^install_libraries\.R$
+^LICENSE\.md$
+^CODEOWNERS$
+^README\.md$
+^\.git$

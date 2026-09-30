@@ -1,0 +1,16 @@
+type	file	label	colour	group	size_factor
+xlink	test_hnRNPC_iCLIP_rep1_LUjh03_all_xlink_events.bedgraph.gz	hnRNPC 1	#586BA4	hnRNPC	4.869687
+xlink	test_hnRNPC_iCLIP_rep2_LUjh25_all_xlink_events.bedgraph.gz	hnRNPC 2	#324376	hnRNPC	9.488133
+xlink	test_U2AF65_iCLIP_ctrl_rep1_all_xlink_events.bedgraph.gz	U2AF2 WT 1	#0AA398	U2AF2 WT	1.781117
+xlink	test_U2AF65_iCLIP_ctrl_rep2_all_xlink_events.bedgraph.gz	U2AF2 WT 2	#067E79	U2AF2 WT	10.135903
+xlink	test_U2AF65_iCLIP_KD1_rep2_all_xlink_events.bedgraph.gz	U2AF2 KD 1	#A54D69	U2AF2 KD	4.384385
+xlink	test_U2AF65_iCLIP_KD2_rep1_all_xlink_events.bedgraph.gz	U2AF2 KD 2	#771434	U2AF2 KD	8.227587
+auxiliary	test_Alu_rev.bed.gz	reverse Alu
+coverage	test_ERR127306_plus.bigwig	CTRL1 1	#A1D99B	CTRL
+coverage	test_ERR127307_plus.bigwig	CTRL1 2	#74C476	CTRL
+coverage	test_ERR127308_plus.bigwig	CTRL2 1	#31A354	CTRL
+coverage	test_ERR127309_plus.bigwig	CTRL2 2	#006D2C	CTRL
+coverage	test_ERR127302_plus.bigwig	KD1 1	#FDAE6B	KD
+coverage	test_ERR127303_plus.bigwig	KD1 2	#E6550D	KD
+coverage	test_ERR127304_plus.bigwig	KD2 1	#FC9272	KD
+coverage	test_ERR127305_plus.bigwig	KD2 2	#DE2D26	KD

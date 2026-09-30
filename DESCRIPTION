@@ -1,0 +1,40 @@
+Package: clipplotr
+Title: Comparative Visualisation of CLIP Data
+Version: 1.9.0.9000
+Authors@R: c(
+    person("Anob M.", "Chakrabarti", email = "a.chakrabarti@ucl.ac.uk", role = c("aut", "cre", "cph")),
+    person("Charlotte", "Capitanchik", role = c("aut", "cph")),
+    person("Jernej", "Ule", role = "cph"),
+    person("Nicholas", "Luscombe", role = "cph"))
+Description: Plots multiple CLIP crosslink tracks across a gene or region of
+    interest with a range of normalisation and smoothing options, together
+    with optional peak (auxiliary), coverage and gene annotation tracks.
+    Usable from R or from the command line.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.1)
+Imports:
+    AnnotationDbi,
+    cowplot,
+    data.table,
+    GenomeInfoDb,
+    GenomicFeatures,
+    GenomicRanges,
+    ggplot2,
+    ggthemes,
+    grDevices,
+    IRanges,
+    optparse,
+    patchwork,
+    rtracklayer,
+    S4Vectors,
+    stats,
+    tools,
+    txdbmaker,
+    utils
+Suggests:
+    testthat (>= 3.0.0),
+    withr
+Config/testthat/edition: 3
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.3
