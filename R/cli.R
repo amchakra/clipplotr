@@ -25,8 +25,9 @@ cli_options <- function() {
        optparse::make_option(c("-s", "--smoothing"), action = "store", type = "character", help = "Smoothing options: none, rollmean [default %default]", default = "rollmean"),
        optparse::make_option(c("-w", "--smoothing_window"), action = "store", type = "integer", help = "Smoothing window [default %default]", default = 100),
        optparse::make_option(c("-a", "--annotation"), action = "store", type = "character", help = "Annotation options: gene, transcript, none [default %default]", default = "transcript"),
+       optparse::make_option(c("", "--transcripts"), action = "store", type = "character", help = "Transcripts to show with transcript annotation: all, canonical (Ensembl_canonical tag) or mane (MANE_Select tag) [default %default]", default = "all"),
        optparse::make_option(c("", "--size_x"), action = "store", type = "integer", help = "Plot size in mm (x) [default: %default]", default = 210),
-       optparse::make_option(c("", "--size_y"), action = "store", type = "integer", help = "Plot size in mm (y) [default: %default]", default = 297),
+       optparse::make_option(c("", "--size_y"), action = "store", type = "integer", help = "Plot size in mm (y) [default: scaled to the number of tracks]"),
        optparse::make_option(c("", "--ratios"), action = "store", type = "character", help = "Specify plot ratios in order: xlink track, auxiliary tracks, coverage track, annotation track (comma separated). Put 0 if any of these track types are absent. [default: 2 for xlinks, 0.25 for 1 auxiliary track 0.5 for >1, 2 for coverage, 3 for annotation]"),
        optparse::make_option(c("-o", "--output"), action = "store", type = "character", help = "Output plot filename. For several regions include {region} in the name (one file per region) or use a .pdf (one page per region)"),
        optparse::make_option(c("", "--verbose"), action = "store_true", type = "logical", help = "Verbose", default = FALSE))
@@ -100,6 +101,7 @@ cli_main <- function(args) {
   check_choice(opt$smoothing, smoothings, "smoothing")
   if(identical(opt$annotation, "original")) clipplotr_error("the original annotation style has been removed; please use transcript, gene or none")
   check_choice(opt$annotation, c("transcript", "gene", "none"), "annotation")
+  check_choice(opt$transcripts, c("all", "canonical", "mane"), "transcripts")
 
   if(!is.null(opt$samples)) {
 
@@ -138,6 +140,7 @@ cli_main <- function(args) {
                 smoothing = opt$smoothing,
                 smoothing_window = opt$smoothing_window,
                 annotation = opt$annotation,
+                transcripts = opt$transcripts,
                 highlight = opt$highlight,
                 flip_x = opt$flip_x,
                 scale_y = opt$scale_y,
@@ -146,6 +149,9 @@ cli_main <- function(args) {
 
   }
 
+  # Height from --size_y, otherwise as suggested by plot_region for the tracks shown
+  height <- function(p) if(is.null(opt$size_y)) attr(p, "height_mm") else opt$size_y
+
   if(grepl("{region}", opt$output, fixed = TRUE)) {
 
     outputs <- vapply(regions, region_output, character(1), output = opt$output, USE.NAMES = FALSE)
@@ -153,7 +159,8 @@ cli_main <- function(args) {
 
     for(i in seq_along(regions)) {
       if(file.exists(outputs[i])) message("WARNING: Output file '", outputs[i], "' exists and will be overwritten!")
-      ggsave(outputs[i], plot_one(regions[i]), height = opt$size_y, width = opt$size_x, units = "mm")
+      p <- plot_one(regions[i])
+      ggsave(outputs[i], p, height = height(p), width = opt$size_x, units = "mm")
     }
 
   } else if(length(regions) > 1) {
@@ -162,7 +169,7 @@ cli_main <- function(args) {
     outputs <- opt$output
     if(file.exists(outputs)) message("WARNING: Output file '", outputs, "' exists and will be overwritten!")
     plots <- lapply(regions, plot_one)
-    grDevices::pdf(outputs, width = opt$size_x / 25.4, height = opt$size_y / 25.4)
+    grDevices::pdf(outputs, width = opt$size_x / 25.4, height = max(sapply(plots, height)) / 25.4)
     for(p in plots) print(p)
     grDevices::dev.off()
 
@@ -170,7 +177,8 @@ cli_main <- function(args) {
 
     outputs <- opt$output
     if(file.exists(outputs)) message("WARNING: Output file '", outputs, "' exists and will be overwritten!")
-    ggsave(outputs, plot_one(regions), height = opt$size_y, width = opt$size_x, units = "mm")
+    p <- plot_one(regions)
+    ggsave(outputs, p, height = height(p), width = opt$size_x, units = "mm")
 
   }
 
