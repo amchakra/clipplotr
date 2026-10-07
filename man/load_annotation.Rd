@@ -16,12 +16,15 @@ cache directory (\code{tools::R_user_dir("clipplotr", "cache")}).}
 style (e.g. \code{chr1}). Set to \code{TRUE} for non-standard sequences.}
 }
 \value{
-A list with elements \code{txdb} (a TxDb) and \code{genes} (a GRanges of genes
-with \code{gene_id} and \code{gene_name}).
+A list with elements \code{txdb} (a TxDb), \code{genes} (a GRanges of genes
+with \code{gene_id} and \code{gene_name}) and \code{transcripts} (a data.table with
+\code{transcript_id}, \code{transcript_name}, \code{gene_id}, \code{transcript_type} and
+logical \code{canonical} and \code{mane} columns from the GTF tags
+\code{Ensembl_canonical} and \code{MANE_Select}).
 }
 \description{
-The first time a GTF is used, a TxDb and a table of genes are created and
-saved to \code{cache_dir}. Later runs with the same GTF load these directly, which
-is much faster than reading the GTF. The cache is keyed on the GTF file name,
-size and modification time, so a changed GTF is rebuilt.
+The first time a GTF is used, a TxDb and tables of genes and transcripts are
+created and saved to \code{cache_dir}. Later runs with the same GTF load these
+directly, which is much faster than reading the GTF. The cache is keyed on
+the GTF file name, size and modification time, so a changed GTF is rebuilt.
 }

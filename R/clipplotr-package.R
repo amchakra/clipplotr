@@ -7,10 +7,8 @@
 #'
 #' @keywords internal
 #' @import GenomicRanges IRanges S4Vectors GenomeInfoDb rtracklayer GenomicFeatures ggplot2
-#' @importFrom data.table data.table as.data.table rbindlist setnames setkey frollmean := .N fread
+#' @importFrom data.table data.table as.data.table rbindlist setnames setkey frollmean := .N .I fread
 #' @importFrom patchwork plot_layout
-#' @importFrom cowplot theme_minimal_grid theme_minimal_vgrid
-#' @importFrom ggthemes scale_colour_tableau scale_fill_tableau
 #' @importFrom AnnotationDbi loadDb saveDb
 #' @importFrom stats setNames
 #' @importFrom utils globalVariables
@@ -21,7 +19,8 @@
 
 # Columns referred to with non-standard evaluation in data.table and ggplot2
 utils::globalVariables(c(
-  "centre", "end", "exp", "gene", "gene_id", "gene_name", "group", "grp",
-  "itemRgb", "libSize", "norm", "sample", "score", "smoothed", "start",
-  "transcript_id", "type", "width", "x1", "x2", "y1", "y2", "ymax", "ymin"
+  "canonical", "end", "exp", "gene_id", "group", "grp", "itemRgb", "keep",
+  "label", "libSize", "mane", "norm", "position", "sample", "score",
+  "smoothed", "start", "transcript_id", "transcript_name", "type", "V1", "width", "y",
+  "ymax", "ymin"
 ))

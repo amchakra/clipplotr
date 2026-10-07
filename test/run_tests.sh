@@ -69,6 +69,14 @@ for annot in transcript gene none; do
   expect_pass "annot_${annot}_flip" -x "$XLINKS" -l "$LABELS" -r "$REGION" -a "$annot" -y test_Alu_rev.bed.gz --coverage "$COVERAGE" --flip_x
 done
 
+# Transcript selection (the test GTF has no canonical/MANE tags, so these fall back to the longest transcript)
+expect_pass transcripts_canonical -x "$XLINKS" -r CD55 --transcripts canonical
+expect_pass transcripts_mane -x "$XLINKS" -r CD55 --transcripts mane
+expect_fail transcripts_bad "transcripts needs to be one of" -x "$XLINKS" -r CD55 --transcripts longest
+
+# Fixed figure height instead of the automatic one
+expect_pass size_y -x "$XLINKS" -r CD55 --size_y 150
+
 # Region given as gene name and gene id (with and without version)
 expect_pass region_gene_name -x "$XLINKS" -r CD55 -a transcript
 expect_pass region_gene_id -x "$XLINKS" -r ENSG00000196352.16_8 -a gene

@@ -10,10 +10,8 @@ channels:
 dependencies:
   - conda-forge::r-base>=4.3
   - conda-forge::r-optparse
-  - conda-forge::r-ggplot2
+  - conda-forge::r-ggplot2>=3.5.0
   - conda-forge::r-scales
-  - conda-forge::r-ggthemes
-  - conda-forge::r-cowplot
   - conda-forge::r-patchwork
   - conda-forge::r-data.table
 

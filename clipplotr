@@ -15,7 +15,7 @@ repo_dir <- dirname(normalizePath(script))
 
 if(file.exists(file.path(repo_dir, "DESCRIPTION")) && dir.exists(file.path(repo_dir, "R"))) {
 
-  for(package in c("GenomeInfoDb", "rtracklayer", "GenomicFeatures", "AnnotationDbi", "ggplot2", "cowplot", "ggthemes", "patchwork", "data.table")) {
+  for(package in c("GenomeInfoDb", "rtracklayer", "GenomicFeatures", "AnnotationDbi", "ggplot2", "patchwork", "data.table")) {
     suppressPackageStartupMessages(library(package, character.only = TRUE))
   }
 

@@ -11,12 +11,14 @@ plot_region(
   smoothing = "rollmean",
   smoothing_window = 100,
   annotation = "transcript",
+  transcripts = "all",
   highlight = NULL,
   flip_x = FALSE,
   scale_y = FALSE,
   tidy_y_labels = NULL,
   ratios = NULL,
-  title = NULL
+  title = NULL,
+  base_size = 10
 )
 }
 \arguments{
@@ -36,7 +38,12 @@ if groups are given) to its maximum after smoothing.}
 
 \item{annotation}{Gene annotation panel: \code{transcript}, \code{gene} or \code{none}.}
 
-\item{highlight}{Optional region to shade, as \code{c(start, end)} or \code{"start:end"}.}
+\item{transcripts}{Which transcripts to show with \code{annotation = "transcript"}:
+\code{all}, \code{canonical} (Ensembl_canonical tag) or \code{mane} (MANE_Select tag).
+Genes without the tag show their canonical or longest transcript.}
+
+\item{highlight}{Optional region to shade in all panels, as \code{c(start, end)}
+or \code{"start:end"}.}
 
 \item{flip_x}{Reverse the x-axis, e.g. for genes on the negative strand.}
 
@@ -45,14 +52,17 @@ if groups are given) to its maximum after smoothing.}
 \item{tidy_y_labels}{Optional approximate number of crosslink y-axis labels.}
 
 \item{ratios}{Optional relative panel heights, in order: crosslinks,
-auxiliary, coverage, annotation. Defaults to 2, 0.25 (0.5 for more than one
-auxiliary file), 2 and 3.}
+auxiliary, coverage, annotation. By default heights follow the number of
+groups, files and transcripts in each panel.}
 
-\item{title}{Plot title. Defaults to the region as given.}
+\item{title}{Plot title. Defaults to the gene name, or the region as given.}
+
+\item{base_size}{Base font size in points.}
 }
 \value{
 A patchwork object, which can be printed, saved with
-\code{\link[ggplot2:ggsave]{ggplot2::ggsave()}} or modified further.
+\code{\link[ggplot2:ggsave]{ggplot2::ggsave()}} or modified further. Its \code{"height_mm"} attribute is a
+suggested height in mm for a 210 mm wide figure.
 }
 \description{
 Plot CLIP tracks for one region
